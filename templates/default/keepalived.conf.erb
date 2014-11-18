@@ -1,0 +1,51 @@
+global_defs {
+   route_id <%= @label %> # uniq id for each router
+}
+
+
+vrrp_sync_group VG_<%= @services%> {
+   group {
+        <% @vips.each_with_index do | vip, index| %>
+        VI_<%= index %>
+        <% end %>
+   }
+}
+
+<% @vips.each_with_index do | vip, index| %>
+vrrp_instance VI_<%= index %> {
+    state <%= @state %> # MASTER or BACKUP
+    interface bond0
+    lvs_sync_daemon_inteface bond0 # must defined on bond0
+    virtual_router_id <%= 50+index %> # ip started with 50
+    priority <%= @state == 'MASTER' ? 100 : 50 %>
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass 123456
+    }
+    virtual_ipaddress {
+        <%= vip%>
+    }
+}
+    <% @vip_configs[vip].each do |vport, real_servers|%>
+
+virtual_server <%= vip %> <%= vport %> {
+    delay_loop 6
+    lb_algo <%= @schedule_method%> # shceduling algothrim see also: man ipvsadm
+    lb_kind DR
+    protocol TCP
+
+        <% real_servers.each do |rs|%>
+    real_server <%= rs['rip']%> <%= rs['rport'] %> {
+        weight <%= rs['weight']%>
+        TCP_CHECK {
+            connect_timeout 10
+            nb_get_retry 3
+            delay_before_retry 3
+            connect_port <%= rs['rport'] %>
+        }
+    }
+    <% end %>
+}
+    <% end %>
+<% end %>
